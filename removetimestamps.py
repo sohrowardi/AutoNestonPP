@@ -3,6 +3,24 @@ import os
 import subprocess
 from tkinter import Tk, filedialog
 
+def capitalize_first_letter(text):
+    if text:
+        return text[0].upper() + text[1:]
+    return text
+
+def process_dialogue(dialogue):
+    # Remove leading "- " if present
+    if dialogue.startswith("- "):
+        dialogue = dialogue[2:]
+    # Replace '?' with '.' in the middle of the dialogue
+    dialogue = re.sub(r'(?<!\?)\?(?!$)', '.', dialogue)
+    # Capitalize the first letter of each sentence
+    dialogue = capitalize_first_letter(dialogue)
+    # Remove trailing '.' or '?' if it's the only punctuation at the end
+    if dialogue.endswith("?") or (dialogue.endswith(".") and dialogue.count('.') == 1):
+        dialogue = dialogue[:-1]
+    return dialogue
+
 def remove_timestamps(file_path):
     with open(file_path, 'r', encoding='utf-8-sig') as file:
         content = file.readlines()
@@ -11,16 +29,15 @@ def remove_timestamps(file_path):
     current_dialogue = []
     for line in content:
         line = line.strip()
-        # Skip lines that are indices or timestamps
-        if re.match(r'^\d+$', line) or re.match(r'^\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}', line):
+        # Skip lines that are timestamps
+        if re.match(r'^\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}', line):
             continue
         # If the line is empty, it means the end of a dialogue block
         if line == "":
             if current_dialogue:
-                # Join dialogue lines and remove trailing single period
+                # Join dialogue lines, process them, and add to the dialogue list
                 dialogue_text = " ".join(current_dialogue)
-                if dialogue_text.endswith("."):
-                    dialogue_text = dialogue_text[:-1] if dialogue_text.count('.') == 1 else dialogue_text
+                dialogue_text = process_dialogue(dialogue_text)
                 dialogue.append(dialogue_text)
                 current_dialogue = []
         else:
@@ -29,8 +46,7 @@ def remove_timestamps(file_path):
     # Append any remaining dialogue
     if current_dialogue:
         dialogue_text = " ".join(current_dialogue)
-        if dialogue_text.endswith("."):
-            dialogue_text = dialogue_text[:-1] if dialogue_text.count('.') == 1 else dialogue_text
+        dialogue_text = process_dialogue(dialogue_text)
         dialogue.append(dialogue_text)
 
     return "\n".join(dialogue)
