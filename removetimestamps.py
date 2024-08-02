@@ -29,8 +29,8 @@ def remove_timestamps(file_path):
     current_dialogue = []
     for line in content:
         line = line.strip()
-        # Skip lines that are timestamps
-        if re.match(r'^\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}', line):
+        # Skip lines that are timestamps or dialogue numbers
+        if re.match(r'^\d+$', line) or re.match(r'^\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}', line):
             continue
         # If the line is empty, it means the end of a dialogue block
         if line == "":
@@ -41,6 +41,7 @@ def remove_timestamps(file_path):
                 dialogue.append(dialogue_text)
                 current_dialogue = []
         else:
+            # If the line is not a number followed by a space, add it to the current dialogue
             current_dialogue.append(line)
 
     # Append any remaining dialogue
