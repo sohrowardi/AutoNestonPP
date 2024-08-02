@@ -1,6 +1,7 @@
 import re
 import os
 import subprocess
+import sys
 from tkinter import Tk, filedialog
 
 def capitalize_first_letter(text):
@@ -14,6 +15,8 @@ def process_dialogue(dialogue):
         dialogue = dialogue[2:]
     # Replace '?' with '.' in the middle of the dialogue
     dialogue = re.sub(r'(?<!\?)\?(?!$)', '.', dialogue)
+    # Remove all double quotation marks
+    dialogue = dialogue.replace('"', '')
     # Capitalize the first letter of each sentence
     dialogue = capitalize_first_letter(dialogue)
     # Remove trailing '.' or '?' if it's the only punctuation at the end
@@ -41,7 +44,7 @@ def remove_timestamps(file_path):
                 dialogue.append(dialogue_text)
                 current_dialogue = []
         else:
-            # If the line is not a number followed by a space, add it to the current dialogue
+            # Add the line to the current dialogue
             current_dialogue.append(line)
 
     # Append any remaining dialogue
