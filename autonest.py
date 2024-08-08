@@ -1,6 +1,7 @@
 import pyautogui
 import time
 import os
+import pyperclip  # New import for clipboard operations
 
 def select_txt_file(directory):
     txt_files = [f for f in os.listdir(directory) if f.endswith('.txt')]
@@ -72,8 +73,11 @@ def automate_premiere_pro(file_path):
         pyautogui.press('2')
         time.sleep(.3)  # Wait for the nesting to start
 
-        # Enter the name for the nested sequence
-        pyautogui.typewrite(subtitle)
+        # Copy the subtitle to the clipboard
+        pyperclip.copy(subtitle)
+        
+        # Paste the copied subtitle
+        pyautogui.hotkey('ctrl', 'v')
         time.sleep(.3)  # Wait for the text to be entered
 
         # Confirm the name change (Assuming 'Enter' confirms)
