@@ -30,18 +30,38 @@ def read_lines_from_file(file_path):
     with open(file_path, 'r', encoding='utf-8') as file:
         return [line.strip() for line in file if line.strip()]
 
+def get_starting_line(subtitles):
+    while True:
+        try:
+            start_line = input(f"Enter the line number to start from (default is 1): ")
+            if start_line == "":
+                start_line = 1
+            else:
+                start_line = int(start_line)
+                
+            if 1 <= start_line <= len(subtitles):
+                confirmation = input(f"Start from line {start_line}: '{subtitles[start_line - 1]}'? (yes/no, default is yes): ").strip().lower()
+                if confirmation == '' or confirmation == 'yes':
+                    return start_line
+            else:
+                print(f"Invalid line number. Please enter a number between 1 and {len(subtitles)}.")
+        except ValueError:
+            print("Invalid input. Please enter a valid number.")
+
 def automate_premiere_pro(file_path):
     subtitles = read_lines_from_file(file_path)
     
     if not subtitles:
         print("No subtitles found.")
         return
-    
+
+    start_line = get_starting_line(subtitles) - 1  # Adjust for 0-based index
+
     # Give user time to switch focus to Premiere Pro
     print("Switch to Adobe Premiere Pro. You have 5 seconds.")
     time.sleep(5)
     
-    for subtitle in subtitles:
+    for subtitle in subtitles[start_line:]:
         print(f"Processing subtitle: {subtitle}")
 
         # Select the clip (Assuming 'd' selects the clip)
