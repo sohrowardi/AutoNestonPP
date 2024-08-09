@@ -85,26 +85,26 @@ def automate_premiere_pro(file_path):
 
         # Select the clip (Assuming 'd' selects the clip)
         pyautogui.press('d')
-        time.sleep(.3)  # Wait for the clip to be selected
+        time.sleep(0.3)  # Adjusted wait for the clip to be selected
 
         # Nest the clip (Assuming '2' nests the clip)
         pyautogui.press('2')
-        time.sleep(.3)  # Wait for the nesting to start
+        time.sleep(0.8)  # Adjusted wait for the nesting to start
 
         # Copy the subtitle to the clipboard
         pyperclip.copy(subtitle)
         
         # Paste the copied subtitle
         pyautogui.hotkey('ctrl', 'v')
-        time.sleep(.3)  # Wait for the text to be entered
+        time.sleep(0.3)  # Wait for the text to be entered
 
         # Confirm the name change (Assuming 'Enter' confirms)
         pyautogui.press('enter')
-        time.sleep(.3)  # Wait for the nesting process to complete
+        time.sleep(0.3)  # Adjusted wait for the nesting process to complete
 
         # Move to the next clip (Assuming 'Down Arrow' moves to the next clip)
         pyautogui.press('down')
-        time.sleep(.3)  # Wait before proceeding to the next iteration
+        time.sleep(0.3)  # Adjusted wait before proceeding to the next iteration
 
     print("All subtitles processed.")
 
