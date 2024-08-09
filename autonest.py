@@ -2,6 +2,20 @@ import pyautogui
 import time
 import os
 import pyperclip  # New import for clipboard operations
+import keyboard  # New import for detecting key presses
+import threading  # New import for threading
+
+# Global variable to control the loop
+stop_program = False
+
+def monitor_esc_key():
+    global stop_program
+    while True:
+        if keyboard.is_pressed('esc'):
+            stop_program = True
+            print("Program stopped by user.")
+            break
+        time.sleep(0.1)
 
 def select_txt_file(directory):
     txt_files = [f for f in os.listdir(directory) if f.endswith('.txt')]
@@ -50,6 +64,7 @@ def get_starting_line(subtitles):
             print("Invalid input. Please enter a valid number.")
 
 def automate_premiere_pro(file_path):
+    global stop_program
     subtitles = read_lines_from_file(file_path)
     
     if not subtitles:
@@ -63,6 +78,9 @@ def automate_premiere_pro(file_path):
     time.sleep(5)
     
     for subtitle in subtitles[start_line:]:
+        if stop_program:
+            break
+
         print(f"Processing subtitle: {subtitle}")
 
         # Select the clip (Assuming 'd' selects the clip)
@@ -91,6 +109,10 @@ def automate_premiere_pro(file_path):
     print("All subtitles processed.")
 
 if __name__ == "__main__":
+    # Start the thread to monitor the "esc" key
+    esc_thread = threading.Thread(target=monitor_esc_key)
+    esc_thread.start()
+
     # Get the directory of the current script
     script_dir = os.path.dirname(os.path.abspath(__file__))
     
