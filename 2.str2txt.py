@@ -10,18 +10,29 @@ def capitalize_first_letter(text):
     return text
 
 def process_dialogue(dialogue):
-    # Remove leading "- " if present
+    # Remove leading "- " or "-" if present
     if dialogue.startswith("- "):
         dialogue = dialogue[2:]
+    elif dialogue.startswith("-"):
+        dialogue = dialogue[1:]
+
     # Replace '?' with '.' in the middle of the dialogue
     dialogue = re.sub(r'(?<!\?)\?(?!$)', '.', dialogue)
+    
     # Remove all double quotation marks
     dialogue = dialogue.replace('"', '')
+    
+    # Remove any "</i>" and replace corresponding "<i>" tags with plain text
+    dialogue = re.sub(r'</i>', '', dialogue)
+    dialogue = re.sub(r'<i>', '', dialogue)
+    
     # Capitalize the first letter of each sentence
     dialogue = capitalize_first_letter(dialogue)
-    # Remove trailing '.' or '?' if it's the only punctuation at the end
-    if dialogue.endswith("?") or (dialogue.endswith(".") and dialogue.count('.') == 1):
+    
+    # Remove trailing '.' or '?' or ',' if it's at the end of the sentence
+    if dialogue.endswith(".") or dialogue.endswith("?") or dialogue.endswith(","):
         dialogue = dialogue[:-1]
+    
     return dialogue
 
 def remove_timestamps(file_path):
@@ -116,3 +127,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+input()

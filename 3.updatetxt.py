@@ -83,3 +83,5 @@ if __name__ == "__main__":
     else:
         process_files(a_file_path, b_file_path)
         print(f"Updated '{b_file_path}' successfully.")
+
+input()
