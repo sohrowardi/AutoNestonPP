@@ -1,9 +1,9 @@
 import pyautogui
 import time
 import os
-import pyperclip  # New import for clipboard operations
-import keyboard  # New import for detecting key presses
-import threading  # New import for threading
+import pyperclip
+import keyboard
+import threading
 
 # Global variable to control the loop
 stop_program = False
@@ -17,7 +17,26 @@ def monitor_esc_key():
             break
         time.sleep(0.1)
 
+def find_matching_txt_file(directory):
+    # Find all .srt files in the directory
+    srt_files = [f for f in os.listdir(directory) if f.endswith('.srt')]
+    
+    # Find the corresponding .txt file for each .srt file
+    for srt_file in srt_files:
+        txt_file = srt_file.replace('.srt', '.txt')
+        if txt_file in os.listdir(directory):
+            return txt_file
+    
+    # If no matching .txt file found, return None
+    return None
+
 def select_txt_file(directory):
+    # Try to find a matching .txt file first
+    matching_file = find_matching_txt_file(directory)
+    if matching_file:
+        return matching_file
+
+    # If no matching .txt file found, ask user to select a file
     txt_files = [f for f in os.listdir(directory) if f.endswith('.txt')]
 
     if not txt_files:
@@ -77,11 +96,11 @@ def automate_premiere_pro(file_path):
     print("Switch to Adobe Premiere Pro. You have 5 seconds.")
     time.sleep(5)
     
-    for subtitle in subtitles[start_line:]:
+    for line_number, subtitle in enumerate(subtitles[start_line:], start=start_line):
         if stop_program:
             break
 
-        print(f"Processing subtitle: {subtitle}")
+        print(f"Processing subtitle (Line {line_number + 1}): {subtitle}")
 
         # Select the clip (Assuming 'd' selects the clip)
         pyautogui.press('d')
