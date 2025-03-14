@@ -1,13 +1,44 @@
 import os
+import json
+import tkinter as tk
+from tkinter import filedialog
 from natsort import natsorted
 
-def create_txt_file():
-    # Define the folder path
-    folder_path = r"F:\VIDEO (Clip Collection)\Movies and Shows\Movies and shows"
+# Define a file to store the last used folder path
+config_file = "last_folder.json"
+
+def get_folder_path():
+    """Retrieve the last used folder or ask the user to select a new one using a GUI."""
+    if os.path.exists(config_file):
+        with open(config_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            folder_path = data.get("folder_path", "")
+            if os.path.exists(folder_path):
+                return folder_path
     
-    # Check if the folder or drive exists
+    # Open a GUI dialog to select a folder
+    root = tk.Tk()
+    root.withdraw()
+    folder_path = filedialog.askdirectory(title="Select the folder containing your clips")
+    
+    if not folder_path:
+        print("No folder selected. Exiting...")
+        exit()
+    
+    # Save the folder path for future use
+    with open(config_file, "w", encoding="utf-8") as f:
+        json.dump({"folder_path": folder_path}, f)
+    
+    return folder_path
+
+def create_txt_file():
+    folder_path = get_folder_path()
+    
+    # Check if the folder exists
     if not os.path.exists(folder_path):
-        print(f"Error: The folder or drive '{folder_path}' was not found.")
+        print(f"Error: The folder '{folder_path}' was not found. Please reselect.")
+        os.remove(config_file)  # Remove the stored path since it's invalid
+        create_txt_file()  # Restart the function to ask again
         return
     
     # Get the list of .mp4 files
@@ -22,7 +53,6 @@ def create_txt_file():
     # Write the sorted file names (without extension) to the .txt file
     with open(txt_file_name, "w", encoding="utf-8") as txt_file:
         for file in mp4_files:
-            # Remove the .mp4 extension but keep the rest of the filename intact
             file_name_without_ext = os.path.splitext(file)[0]
             txt_file.write(file_name_without_ext + "\n")
     
