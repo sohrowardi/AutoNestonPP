@@ -120,18 +120,125 @@ def _comma_int(n: int) -> str:
 #  Confirmation prompt
 # ─────────────────────────────────────────────
 
+def _edit_line_popup(prompt_text: str, default: str) -> str | None:
+    """Open a Tkinter popup editor prefilled with the suggested line."""
+    root = tk.Tk()
+    root.withdraw()
+    top = tk.Toplevel(root)
+    top.title("Edit suggested line")
+
+    # Size the popup based on the content length, with reasonable limits.
+    min_width = 500
+    max_width = 1200
+    estimated_width = int(max(40, min(len(default), 140)) * 8 + 120)
+    width_pixels = min(max(min_width, estimated_width), max_width)
+    height_pixels = 140
+
+    screen_width = top.winfo_screenwidth()
+    screen_height = top.winfo_screenheight()
+    x = max(0, (screen_width - width_pixels) // 2)
+    y = max(0, (screen_height - height_pixels) // 2)
+    top.geometry(f"{width_pixels}x{height_pixels}+{x}+{y}")
+    top.minsize(min_width, height_pixels)
+    top.resizable(True, False)
+
+    def close(result: str | None) -> None:
+        top.result = result
+        top.destroy()
+
+    def on_escape(event=None):
+        close(None)
+
+    def on_enter(event=None):
+        close(entry.get())
+        return "break"
+
+    label = tk.Label(top, text=prompt_text, anchor="w")
+    label.pack(fill="x", padx=12, pady=(12, 6))
+
+    frame = tk.Frame(top)
+    frame.pack(fill="both", expand=True, padx=12, pady=(0, 8))
+
+    scrollbar = tk.Scrollbar(frame, orient="horizontal")
+    entry = tk.Entry(frame, font=("Segoe UI", 11), width=1)
+    entry.insert(0, default)
+    entry.grid(row=0, column=0, sticky="nsew")
+    scrollbar.config(command=entry.xview)
+    entry.configure(xscrollcommand=scrollbar.set)
+    scrollbar.grid(row=1, column=0, sticky="ew")
+
+    frame.columnconfigure(0, weight=1)
+
+    button_frame = tk.Frame(top)
+    button_frame.pack(fill="x", padx=12, pady=(0, 12))
+    ok_button = tk.Button(button_frame, text="Save", command=lambda: close(entry.get()))
+    cancel_button = tk.Button(button_frame, text="Cancel", command=lambda: close(None))
+    ok_button.pack(side="right", padx=(0, 6))
+    cancel_button.pack(side="right")
+
+    top.bind("<Escape>", on_escape)
+    top.bind("<Return>", on_enter)
+    top.protocol("WM_DELETE_WINDOW", on_escape)
+
+    top.update_idletasks()
+    top.lift()
+    top.attributes("-topmost", True)
+    top.focus_force()
+    entry.focus_force()
+    entry.selection_range(0, tk.END)
+    entry.icursor(tk.END)
+    top.grab_set()
+    top.after(50, lambda: top.attributes("-topmost", False))
+    top.wait_window()
+    root.destroy()
+    return getattr(top, "result", None)
+
+
+def _get_single_key(prompt: str) -> str:
+    try:
+        import msvcrt
+        sys.stdout.write(prompt)
+        sys.stdout.flush()
+        ch = msvcrt.getwch()
+        if ch == "\r":
+            ch = "\n"
+        sys.stdout.write("\n")
+        return ch
+    except ImportError:
+        try:
+            import tty
+            import termios
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+        except (ImportError, OSError, AttributeError):
+            return input(prompt)[:1]
+        try:
+            sys.stdout.write(prompt)
+            sys.stdout.flush()
+            tty.setraw(fd)
+            ch = sys.stdin.read(1)
+            sys.stdout.write("\n")
+            return ch
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+
 def _confirm(original: str, proposed: str) -> str | None:
     """Ask the user to accept, reject, or manually correct the full proposed line."""
-    while True:
-        _clear_screen()
-        print(_format_confirm_line("🔴", original, ANSI_RED))
-        print(_format_confirm_line("🟢", proposed, ANSI_GREEN))
-        answer = input("\nConfirm? (y/n or type corrected line): ").strip()
-        if answer == "" or answer.lower() in ("y", "yes"):
-            return proposed
-        if answer.lower() in ("n", "no"):
-            return None
-        return answer
+    _clear_screen()
+    print(_format_confirm_line("🔴", original, ANSI_RED))
+    print(_format_confirm_line("🟢", proposed, ANSI_GREEN))
+    choice = _get_single_key(
+        "\nPress Enter to accept, n to reject, or Space to edit: ",
+    )
+    if choice in ("\n", "\r"):
+        return proposed
+    if choice.lower() == "n":
+        return None
+    if choice == " ":
+        edited = _edit_line_popup("Edit the suggested line:", proposed)
+        return proposed if edited is None else edited
+    return proposed
 
 
 # ─────────────────────────────────────────────
@@ -267,7 +374,8 @@ def _format_leading_amount_line(text: str) -> str | None:
         raw = money.group(1)
         value = int(raw.replace(",", ""))
         words = _currency_to_words(value)
-        return f"[${raw}] {_capitalize_first_letter(words + ' dollars')}"
+        unit = _money_unit(value)
+        return f"[${raw}] {_capitalize_first_letter(words + ' ' + unit)}"
     digits = re.fullmatch(r'([0-9][0-9,]*)', stripped)
     if digits:
         raw = digits.group(1)
@@ -275,6 +383,17 @@ def _format_leading_amount_line(text: str) -> str | None:
         words = _num_to_words(value)
         return f"[{raw}] {_capitalize_first_letter(words)}"
     return None
+
+
+def _money_unit(value: int, explicit: str | None = None) -> str:
+    if explicit:
+        explicit = explicit.lower()
+        if explicit.startswith('doll'):
+            return 'dollar' if value == 1 else 'dollars'
+        if explicit.startswith('buck'):
+            return 'buck' if value == 1 else 'bucks'
+        return explicit
+    return 'dollar' if value == 1 else 'dollars'
 
 
 def _replace_dollar_amount(m: re.Match, text: str) -> str:
@@ -285,7 +404,7 @@ def _replace_dollar_amount(m: re.Match, text: str) -> str:
     words = _currency_to_words(value, short_form=(value < 1_000 and omit_dollars))
     if omit_dollars:
         return words
-    return f"{words} dollars"
+    return f"{words} {_money_unit(value)}"
 
 
 def _replace_bare_digits(m: re.Match) -> str:
@@ -406,15 +525,17 @@ def _replace_primary_number_with_words(text: str, match: re.Match, value: int, i
     if is_money:
         # choose unit to append
         if currency_match:
-            unit = currency_match.group(1).lower()
-            if value == 1:
-                unit = 'dollar' if unit.startswith('doll') else ( 'buck' if unit.startswith('buck') else unit )
-            else:
-                unit = 'dollars' if unit.startswith('doll') else ( 'bucks' if unit.startswith('buck') else unit )
-            replacement = words + ' ' + unit
+            replacement = words + ' ' + _money_unit(value, currency_match.group(1))
+            # Avoid duplicating the same currency unit if it is already present after the match.
+            after = re.sub(
+                r'^\s*' + re.escape(currency_match.group(0)) + r'\b',
+                '',
+                after,
+                flags=re.IGNORECASE,
+            )
         else:
-            # No explicit unit word after numeric – use 'dollars' normally
-            replacement = words + ' dollars'
+            # No explicit unit word after numeric – use singular/plural correctly
+            replacement = words + ' ' + _money_unit(value)
     else:
         replacement = words
 
@@ -587,10 +708,19 @@ def process_files(a_file_path: str, b_file_path: str) -> str:
 #  File selection helpers
 # ─────────────────────────────────────────────
 
-def select_file(title: str, initial_dir: str = "") -> str:
+def select_file(title: str, initial_dir: str = "", filetypes: tuple[tuple[str, str], ...] = (("Text files", "*.txt"),)) -> str:
+    if not initial_dir:
+        initial_dir = os.getcwd()
+    if not os.path.isdir(initial_dir):
+        initial_dir = os.getcwd()
     root = tk.Tk()
     root.withdraw()
-    file_path = filedialog.askopenfilename(title=title, initialdir=initial_dir)
+    file_path = filedialog.askopenfilename(
+        title=title,
+        initialdir=initial_dir,
+        filetypes=filetypes,
+        defaultextension=".txt",
+    )
     root.destroy()
     return file_path
 
@@ -623,7 +753,11 @@ if __name__ == "__main__":
         print(f"Database file found: {os.path.basename(a_file_path)}")
     else:
         print("No 'Clip Collections' file found. Please select the database file.")
-        a_file_path = select_file("Select the main database file (with numbers)", folder)
+        a_file_path = select_file(
+            "Select the main database file (with numbers)",
+            folder,
+            (("Text files", "*.txt"),),
+        )
 
     # ── Locate the target text file ────────────────────────────────────────
     txt_files = find_file(folder, suffix=".txt", exclude_prefix="Clip Collections")
@@ -632,7 +766,11 @@ if __name__ == "__main__":
         print(f"Target file found:   {os.path.basename(b_file_path)}")
     elif len(txt_files) > 1:
         print("Multiple target files found. Please select the file to process.")
-        b_file_path = select_file("Select the file to be processed", folder)
+        b_file_path = select_file(
+            "Select the file to be processed",
+            folder,
+            (("Text files", "*.txt"),),
+        )
     else:
         print("Error: No target file found.")
         b_file_path = ""
