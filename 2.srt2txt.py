@@ -102,14 +102,17 @@ def main():
     if srt_file is None:
         return
 
-    # Define input and output file paths
+    # Define input file path
     input_file = srt_file
-    output_file = f"{os.path.splitext(input_file)[0]}.txt"
-    
+
     print(f"Processing file: {input_file}")
 
     # Process the file to remove timestamps
     processed_text = remove_timestamps(input_file)
+
+    # Count the number of sentence lines in the processed text
+    line_count = len([line for line in processed_text.splitlines() if line.strip()])
+    output_file = f"{os.path.splitext(input_file)[0]}[{line_count}].txt"
 
     print(f"Saving the processed text to {output_file}...")
 
