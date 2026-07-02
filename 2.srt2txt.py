@@ -16,6 +16,9 @@ def process_dialogue(dialogue):
     elif dialogue.startswith("-"):
         dialogue = dialogue[1:]
 
+    # Collapse double hyphens into a single hyphen
+    dialogue = dialogue.replace('--', '-')
+
     # Replace '?' with '.' in the middle of the dialogue
     dialogue = re.sub(r'(?<!\?)\?(?!$)', '.', dialogue)
     
@@ -36,31 +39,42 @@ def process_dialogue(dialogue):
     return dialogue
 
 def remove_timestamps(file_path):
+    # Read the whole file and split into blocks separated by blank lines.
     with open(file_path, 'r', encoding='utf-8-sig') as file:
-        content = file.readlines()
+        text = file.read()
+
+    # Split on one or more blank lines (handles different newline styles)
+    blocks = re.split(r'\r?\n\s*\r?\n', text)
 
     dialogue = []
-    current_dialogue = []
-    for line in content:
-        line = line.strip()
-        # Skip lines that are timestamps or dialogue numbers
-        if re.match(r'^\d+$', line) or re.match(r'^\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}', line):
-            continue
-        # If the line is empty, it means the end of a dialogue block
-        if line == "":
-            if current_dialogue:
-                # Join dialogue lines, process them, and add to the dialogue list
-                dialogue_text = " ".join(current_dialogue)
-                dialogue_text = process_dialogue(dialogue_text)
-                dialogue.append(dialogue_text)
-                current_dialogue = []
-        else:
-            # Add the line to the current dialogue
-            current_dialogue.append(line)
+    timestamp_re = re.compile(r'^\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}$')
 
-    # Append any remaining dialogue
-    if current_dialogue:
-        dialogue_text = " ".join(current_dialogue)
+    for block in blocks:
+        # Split block into lines and strip whitespace
+        lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
+        if not lines:
+            continue
+
+        # If block has at least 2 lines and the second line is a timestamp,
+        # then the remaining lines are the dialogue text. This avoids
+        # mistaking numeric-only dialogue (e.g., "2031") for the block index.
+        if len(lines) >= 2 and timestamp_re.match(lines[1]):
+            text_lines = lines[2:]
+        # Some SRT files omit the index number and start with a timestamp
+        elif timestamp_re.match(lines[0]):
+            text_lines = lines[1:]
+        else:
+            # Fallback: treat all lines as dialogue text
+            # (covers non-standard files)
+            # If the first line is just an index followed by no timestamp,
+            # we still want to include numeric dialogue lines, so do not
+            # automatically drop numeric-only lines here.
+            text_lines = lines
+
+        if not text_lines:
+            continue
+
+        dialogue_text = " ".join(text_lines)
         dialogue_text = process_dialogue(dialogue_text)
         dialogue.append(dialogue_text)
 

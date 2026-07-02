@@ -1,12 +1,16 @@
 import pyautogui
 import time
 import os
+import sys
 import pyperclip
 import keyboard
 import threading
+import tkinter as tk
+from tkinter import Listbox
 
-# Global variable to control the loop
+# Global variables to control the loop
 stop_program = False
+AUTOSAVE_INTERVAL = 200  # Save every N processed clips
 
 def monitor_esc_key():
     global stop_program
@@ -46,19 +50,43 @@ def select_txt_file(directory):
     if len(txt_files) == 1:
         return txt_files[0]
 
-    print("Multiple .txt files found. Please select one:")
-    for i, file in enumerate(txt_files):
-        print(f"{i + 1}: {file}")
-
-    while True:
-        try:
-            choice = int(input("Enter the number of the file you want to select: ")) - 1
-            if 0 <= choice < len(txt_files):
-                return txt_files[choice]
-            else:
-                print("Invalid choice. Please try again.")
-        except ValueError:
-            print("Invalid input. Please enter a number.")
+    # Show GUI popup for file selection
+    selected_file = [None]
+    
+    def on_select():
+        selection = listbox_widget.curselection()
+        if selection:
+            selected_file[0] = txt_files[selection[0]]
+            root.destroy()
+    
+    def on_double_click(event):
+        selection = listbox_widget.curselection()
+        if selection:
+            selected_file[0] = txt_files[selection[0]]
+            root.destroy()
+    
+    root = tk.Tk()
+    root.title("Select .txt File")
+    root.geometry("400x300")
+    
+    # Create listbox
+    listbox_widget = Listbox(root, width=50)
+    listbox_widget.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+    
+    # Add files to listbox
+    for file in txt_files:
+        listbox_widget.insert(tk.END, file)
+    
+    # Bind double-click event
+    listbox_widget.bind('<Double-Button-1>', on_double_click)
+    
+    # Create Select button
+    select_btn = tk.Button(root, text="Select", command=on_select)
+    select_btn.pack(pady=5)
+    
+    root.mainloop()
+    
+    return selected_file[0]
 
 def read_lines_from_file(file_path):
     with open(file_path, 'r', encoding='utf-8') as file:
@@ -81,6 +109,12 @@ def get_starting_line(subtitles):
                 print(f"Invalid line number. Please enter a number between 1 and {len(subtitles)}.")
         except ValueError:
             print("Invalid input. Please enter a valid number.")
+
+def perform_save():
+    print("Saving progress...")
+    pyautogui.hotkey('ctrl', 's')
+    time.sleep(10)
+
 
 def automate_premiere_pro(file_path):
     global stop_program
@@ -105,10 +139,14 @@ def automate_premiere_pro(file_path):
         # Select the clip (Assuming 'd' selects the clip)
         pyautogui.press('d')
         time.sleep(0.5)  # Adjusted wait for the clip to be selected
+        if stop_program:
+            break
 
         # Nest the clip (Assuming '2' nests the clip)
         pyautogui.press('2')
         time.sleep(0.8)  # Adjusted wait for the nesting to start
+        if stop_program:
+            break
 
         # Copy the subtitle to the clipboard
         pyperclip.copy(subtitle)
@@ -116,16 +154,30 @@ def automate_premiere_pro(file_path):
         # Paste the copied subtitle
         pyautogui.hotkey('ctrl', 'v')
         time.sleep(0.5)  # Wait for the text to be entered
+        if stop_program:
+            break
 
         # Confirm the name change (Assuming 'Enter' confirms)
         pyautogui.press('enter')
         time.sleep(0.5)  # Adjusted wait for the nesting process to complete
+        if stop_program:
+            break
 
         # Move to the next clip (Assuming 'Down Arrow' moves to the next clip)
         pyautogui.press('down')
         time.sleep(0.5)  # Adjusted wait before proceeding to the next iteration
 
-    print("All subtitles processed.")
+        if (line_number - start_line + 1) % AUTOSAVE_INTERVAL == 0:
+            perform_save()
+
+    if stop_program:
+        print("Stop requested. Performing final save before exiting...")
+    else:
+        print("All subtitles processed. Performing final save and exiting...")
+
+    perform_save()
+    print("Final save complete. Exiting.")
+    sys.exit(0)
 
 if __name__ == "__main__":
     # Start the thread to monitor the "esc" key

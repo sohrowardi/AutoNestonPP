@@ -89,9 +89,15 @@ def _words_to_num(text: str) -> int | None:
     word_map.update({
         "hundred": 100, "thousand": 1_000,
         "million": 1_000_000, "billion": 1_000_000_000,
+        "grand": 1_000,
+        "and": 0,
     })
 
     tokens = re.split(r"[\s\-]+", text)
+    meaningful_tokens = [token for token in tokens if token != 'and']
+    if not meaningful_tokens:
+        return None
+
     total = 0
     current = 0
     try:
@@ -99,7 +105,11 @@ def _words_to_num(text: str) -> int | None:
             if token not in word_map:
                 return None
             val = word_map[token]
+            if val == 0:
+                continue
             if val == 100:
+                if current == 0:
+                    current = 1
                 current *= 100
             elif val >= 1_000:
                 total += (current if current else 1) * val
@@ -283,7 +293,7 @@ _REPEAT_RE = re.compile(r'\bx\d+\b', re.IGNORECASE)
 
 # Currency context words
 _CURRENCY_CONTEXT_RE = re.compile(
-    r'\b(?:dollar|dollars|buck|bucks|cash|usd|cent|cents)\b',
+    r'\b(?:dollar|dollars|buck|bucks|cash|usd|cent|cents|grand)\b',
     re.IGNORECASE,
 )
 
@@ -292,11 +302,11 @@ _NUMBER_WORD_RE = re.compile(
     r'\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|'
     r'thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|'
     r'thirty|forty|fifty|sixty|seventy|eighty|ninety|'
-    r'hundred|thousand|million|billion)'
+    r'hundred|thousand|million|billion|grand|and)'
     r'(?:[\s\-](?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|'
     r'thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|'
     r'thirty|forty|fifty|sixty|seventy|eighty|ninety|'
-    r'hundred|thousand|million|billion))*\b',
+    r'hundred|thousand|million|billion|grand|and))*\b',
     re.IGNORECASE,
 )
 
@@ -329,6 +339,10 @@ _UNIT_AFTER_MONEY_RE = re.compile(
 )
 
 _LEADING_BRACKET_RE = re.compile(r'^(\[[^\]]+\])\s*(.*)$')
+_LEADING_BRACKETS_RE = re.compile(r'^\s*(?:\[[^\]]+\]\s*)+')
+_NUMERIC_LIKE_BRACKET_RE = re.compile(
+    r'^\[\s*\$?\d[\d,]*(?:[\'’\.]\d+)*%?(?:\s*,\s*\$?\d[\d,]*(?:[\'’\.]\d+)*%?)*\s*\]$'
+)
 _DOLLAR_AMOUNT_RE = re.compile(r'\$([0-9][0-9,]*)')
 # Full dollar + optional scale (e.g. "$750 million")
 _DOLLAR_FULL_RE = re.compile(r'\$\s*([0-9][0-9,]*)(?:\s*(million|thousand|billion|hundred))?', re.IGNORECASE)
@@ -351,11 +365,24 @@ def _capitalize_first_letter(text: str) -> str:
     return re.sub(r'([A-Za-z])', lambda m: m.group(1).upper(), text, count=1)
 
 
-def _split_leading_bracket(line: str) -> tuple[str, str]:
-    match = _LEADING_BRACKET_RE.match(line)
+def _split_leading_brackets(line: str) -> tuple[list[str], str]:
+    match = _LEADING_BRACKETS_RE.match(line)
     if not match:
-        return "", line
-    return match.group(1), match.group(2)
+        return [], line.lstrip()
+    prefix = match.group(0)
+    tokens = re.findall(r'\[[^\]]+\]', prefix)
+    remainder = line[match.end():].lstrip()
+    return tokens, remainder
+
+
+def _is_numeric_like_bracket(token: str) -> bool:
+    return bool(_NUMERIC_LIKE_BRACKET_RE.fullmatch(token))
+
+
+def _reorder_leading_brackets(tokens: list[str]) -> list[str]:
+    numeric = [t for t in tokens if _is_numeric_like_bracket(t)]
+    others = [t for t in tokens if not _is_numeric_like_bracket(t)]
+    return numeric + others
 
 
 def _currency_to_words(value: int, short_form: bool = False) -> str:
@@ -497,7 +524,7 @@ def find_primary_number(text: str) -> tuple[int | None, bool, re.Match | None]:
         parsed = _words_to_num(words)
         if parsed is not None:
             after = text[m.end():]
-            is_money = bool(_CURRENCY_CONTEXT_RE.search(after)) or ('$' in text[:m.start()])
+            is_money = bool(_CURRENCY_CONTEXT_RE.search(after)) or ('$' in text[:m.start()]) or 'grand' in words.lower()
             return parsed, is_money, m
 
     return None, False, None
@@ -521,11 +548,18 @@ def _replace_primary_number_with_words(text: str, match: re.Match, value: int, i
     after_strip = after.lstrip()
     currency_match = re.match(r'^(dollars|dollar|bucks|buck)\b', after_strip, re.IGNORECASE)
 
-    words = _num_to_words(value)
+    matched_text = match.group(0)
+    if re.search(r'[A-Za-z]', matched_text):
+        replacement = matched_text
+    else:
+        replacement = _num_to_words(value)
+
     if is_money:
-        # choose unit to append
-        if currency_match:
-            replacement = words + ' ' + _money_unit(value, currency_match.group(1))
+        if re.search(r'\b(grand|dollars?|bucks?)\b', matched_text, re.IGNORECASE):
+            # Keep the original money wording if it already expresses currency.
+            pass
+        elif currency_match:
+            replacement = replacement + ' ' + _money_unit(value, currency_match.group(1))
             # Avoid duplicating the same currency unit if it is already present after the match.
             after = re.sub(
                 r'^\s*' + re.escape(currency_match.group(0)) + r'\b',
@@ -535,9 +569,7 @@ def _replace_primary_number_with_words(text: str, match: re.Match, value: int, i
             )
         else:
             # No explicit unit word after numeric – use singular/plural correctly
-            replacement = words + ' ' + _money_unit(value)
-    else:
-        replacement = words
+            replacement = replacement + ' ' + _money_unit(value)
 
     # preserve spacing: if there was no space between number and following punctuation, keep it
     return before + replacement + after
@@ -571,39 +603,44 @@ def process_line(line: str) -> str:
     line_no_version = re.sub(r'\s*\(\d+\)\s*$', '', line)
     text, placeholders = _protect_repetitions(line_no_version)
 
-    # remove any existing leading bracketed reference
-    _existing_ref, remainder = remove_leading_reference(text)
+    # Collect any existing leading bracket tokens and normalize the remaining text
+    leading_tokens, remainder = _split_leading_brackets(text)
+    leading_tokens = [_restore_repetitions(tok, placeholders) for tok in leading_tokens]
+    restored_remainder = _restore_repetitions(remainder, placeholders)
+    has_numeric_ref = any(_is_numeric_like_bracket(tok) for tok in leading_tokens)
 
-    # find primary numeric value from content
+    if has_numeric_ref:
+        prefix_tokens = _reorder_leading_brackets(leading_tokens)
+        proposed = " ".join(prefix_tokens)
+        if restored_remainder:
+            proposed = f"{proposed} {restored_remainder}"
+        if proposed != line:
+            correction = _confirm(line, proposed)
+            if correction is None:
+                return line
+            return correction
+        return line
+
+    # Find a primary numeric value in the content only when there is no preserved numeric bracket.
     value, is_money, match = find_primary_number(remainder)
 
     if value is None:
-        # No numeric content: if there was an existing leading reference, normalize it; otherwise return unchanged
+        # No numeric content: preserve any non-numeric leading tags and return unchanged remainder.
         restored_remainder = _restore_repetitions(remainder, placeholders)
-        if _existing_ref:
-            # try to parse existing ref as numeric (allow leading $)
-            ref_text = _existing_ref.strip()
-            is_money_ref = False
-            if ref_text.startswith("$"):
-                is_money_ref = True
-                ref_text = ref_text[1:]
-            try:
-                ref_val = int(ref_text.replace(",", ""))
-                new_ref = generate_reference(ref_val, is_money_ref)
-                return f"{new_ref} {restored_remainder}" if restored_remainder else new_ref
-            except Exception:
-                # not a numeric ref - just reattach original normalized bracket
-                return f"[{_existing_ref}] {restored_remainder}" if restored_remainder else f"[{_existing_ref}]"
+        if leading_tokens:
+            prefix = " ".join(leading_tokens)
+            return f"{prefix} {restored_remainder}" if restored_remainder else prefix
         return restored_remainder
 
     # generate new reference from authoritative content
     reference = generate_reference(value, is_money)
+    prefix_tokens = [reference] + leading_tokens
 
     # normalize sentence content (convert numbers to words etc.)
     normalized = normalize_sentence_from_content(remainder, match, value, is_money)
+    restored_normalized = _restore_repetitions(normalized, placeholders)
 
-    proposed = f"{reference} {normalized}"
-    proposed = _restore_repetitions(proposed, placeholders)
+    proposed = f"{' '.join(prefix_tokens)} {restored_normalized}"
 
     if proposed != line:
         correction = _confirm(line, proposed)
@@ -617,28 +654,40 @@ def process_line(line: str) -> str:
 #  Version-counter database helpers
 # ─────────────────────────────────────────────
 
-def load_sentence_counts(a_file_path: str) -> dict[str, list[int]]:
-    """Read the Clip Collections database into a sentence → [numbers] map."""
-    sentence_count: dict[str, list[int]] = {}
+def load_sentence_counts(a_file_path: str) -> dict[str, dict[str, object]]:
+    """Read the Clip Collections database into a lowercase-keyed map with canonical casing."""
+    sentence_count: dict[str, dict[str, object]] = {}
     with open(a_file_path, 'r', encoding='utf-8') as fh:
         for line in fh:
             try:
                 sentence, number = line.rsplit(' ', 1)
                 number = int(number.strip('()\n'))
-                sentence_count.setdefault(sentence, []).append(number)
+                key = sentence.casefold()
+                if key not in sentence_count:
+                    sentence_count[key] = {
+                        'canonical': sentence,
+                        'numbers': [],
+                    }
+                sentence_count[key]['numbers'].append(number)
             except ValueError:
                 print(f"Skipping invalid line in database: {line.strip()}")
     return sentence_count
 
 
-def assign_version(sentence: str, sentence_count: dict[str, list[int]]) -> str:
+def assign_version(sentence: str, sentence_count: dict[str, dict[str, object]]) -> str:
     """Return 'sentence (N)' where N is one higher than the current max."""
-    if sentence in sentence_count:
-        next_number = max(sentence_count[sentence]) + 1
-    else:
-        next_number = 0
-    sentence_count.setdefault(sentence, []).append(next_number)
-    return f"{sentence} ({next_number})"
+    key = sentence.casefold()
+    if key in sentence_count:
+        numbers = sentence_count[key]['numbers']
+        next_number = max(numbers) + 1
+        numbers.append(next_number)
+        canonical = sentence_count[key]['canonical']
+        return f"{canonical} ({next_number})"
+    sentence_count[key] = {
+        'canonical': sentence,
+        'numbers': [0],
+    }
+    return f"{sentence} (0)"
 
 
 # ─────────────────────────────────────────────
